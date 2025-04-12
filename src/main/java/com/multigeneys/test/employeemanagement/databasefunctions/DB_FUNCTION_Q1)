@@ -1,0 +1,48 @@
+-- FUNCTION: public.fn_employee_list(character varying, integer, integer, bigint, double precision, double precision)
+
+-- DROP FUNCTION IF EXISTS public.fn_employee_list(character varying, integer, integer, bigint, double precision, double precision);
+
+CREATE OR REPLACE FUNCTION public.fn_employee_list(
+	searchstring character varying,
+	page integer,
+	size integer,
+	designationid bigint,
+	employeeminsal double precision,
+	employeemaxsal double precision)
+    RETURNS TABLE(srno bigint, id bigint, empname character varying, empdep character varying, empdesignation character varying, empsalary double precision, status boolean)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT
+        ROW_NUMBER() OVER (ORDER BY employee.id DESC) AS srNo,
+        employee.id AS id,
+        employee.employee_name AS empName,
+        dep.department AS empDep,
+        d.designation AS empDesignation,
+        sal.salary AS empSalary,
+        employee.is_active AS status
+    FROM employee
+    LEFT JOIN designation d ON employee.designation_id = d.id
+    LEFT JOIN department dep ON employee.department_id = dep.id
+    LEFT JOIN salary sal ON employee.salary_id = sal.id
+    WHERE employee.is_delete = FALSE
+      AND (searchString IS NULL OR employee.employee_name ILIKE '%' || searchString || '%')
+      AND (designationId IS NULL OR employee.designation_id = designationId)
+      AND (
+            (employeeMinSal IS NULL AND employeeMaxSal IS NULL)
+         OR (employeeMinSal IS NOT NULL AND employeeMaxSal IS NOT NULL AND sal.salary BETWEEN employeeMinSal AND employeeMaxSal)
+         OR (employeeMinSal IS NOT NULL AND employeeMaxSal IS NULL AND sal.salary >= employeeMinSal)
+         OR (employeeMinSal IS NULL AND employeeMaxSal IS NOT NULL AND sal.salary <= employeeMaxSal)
+          )
+    OFFSET size * page
+    FETCH NEXT size ROWS ONLY;
+END;
+$BODY$;
+
+ALTER FUNCTION public.fn_employee_list(character varying, integer, integer, bigint, double precision, double precision)
+    OWNER TO postgres;
